@@ -35,6 +35,10 @@ CVCenterConnectionsMixer {
 		incomingCmds = [];
 	}
 
+	// cmdPatterns can be command names like "/my/cmd1", "/my/cmd2" etc.
+	// or a regular expression like "/[a-z1-4]+/(fader|slider)[1-9]+"
+	// TODO: exclude status commands like "/ping" or similar
+	// that some controllers may emmit at irregular intervals
 	collectAddresses { |...cmdPatterns|
 		var addrCmd;
 
@@ -92,7 +96,7 @@ CVCenterConnectionsMixer {
 									wdgt.setOscMapping(\linexp);
 								};
 								// jump to the next value in cmd if cmd has more than one value
-								// otherwise increment count and go to nect incoming cmd
+								// otherwise increment count and go to next incoming cmd
 								if (isMultiSlotCmd and:{
 									msgIndex < (incomingCmds[count][2]-1)
 								}) { msgIndex = msgIndex + 1 } {
