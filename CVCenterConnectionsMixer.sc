@@ -19,7 +19,6 @@ CVCenterConnectionsMixer {
 			widgetsToBeConnected = CVCenter.all.keys.copy.asArray.takeThese({ |item|
 				excludeWidgets.includes(item)
 			});
-
 		};
 
 		includeWidgets !? {
@@ -34,7 +33,6 @@ CVCenterConnectionsMixer {
 		};
 
 		incomingCmds = [];
-		[includeWidgets, excludeWidgets].postln;
 	}
 
 	collectAddresses { |...cmdPatterns|
@@ -72,10 +70,14 @@ CVCenterConnectionsMixer {
 	}
 
 	connectWidgets {
-		var count = 0;
+		var count = 0; // iteration over incomingCmds
+		var msgIndex = 1; // a cmd may have more than 1 value
+		var isMultiSlotCmd = false; // should be set to true if cmd has more than one value
 
 		CVCenter.cvWidgets.pairsDo({ |key, wdgt|
 			if (widgetsToBeConnected.includes(key)) {
+				// more than one value per cmd
+				isMultiSlotCmd = incomingCmds[count][2] > 2;
 				switch(wdgt.class,
 					CVWidgetKnob, {
 						incomingCmds[count] !? {
@@ -83,12 +85,20 @@ CVCenterConnectionsMixer {
 								wdgt.oscConnect(
 									incomingCmds[count][0].ip,
 									incomingCmds[count][0].port,
-									incomingCmds[count][1]
+									incomingCmds[count][1],
+									msgIndex,
 								);
 								if (wdgt.getSpec.warp.class === ExponentialWarp) {
-									wdgt.setOscMapping(\explin);
+									wdgt.setOscMapping(\linexp);
 								};
-								count = count + 1;
+								// jump to the next value in cmd if cmd has more than one value
+								// otherwise increment count and go to nect incoming cmd
+								if (isMultiSlotCmd and:{
+									msgIndex < (incomingCmds[count][2]-1)
+								}) { msgIndex = msgIndex + 1 } {
+									count = count + 1;
+									msgIndex = 1;
+								}
 							}
 						}
 					},
@@ -100,12 +110,18 @@ CVCenterConnectionsMixer {
 										incomingCmds[count][0].ip,
 										incomingCmds[count][0].port,
 										incomingCmds[count][1],
-										slot: slot
+										msgIndex,
+										slot
 									);
 									if (wdgt.getSpec(slot).warp.class === ExponentialWarp) {
-										wdgt.setOscMapping(\explin, slot);
+										wdgt.setOscMapping(\linexp, slot);
 									};
-									count = count + 1;
+									if (isMultiSlotCmd and:{
+										msgIndex < (incomingCmds[count][2]-1)
+									}) { msgIndex = msgIndex + 1 } {
+										count = count + 1;
+										msgIndex = 1;
+									}
 								}
 							}
 						})
@@ -118,12 +134,18 @@ CVCenterConnectionsMixer {
 										incomingCmds[count][0].ip,
 										incomingCmds[count][0].port,
 										incomingCmds[count][1],
-										slot: i
+										msgIndex,
+										i
 									);
 									if (wdgt.getSpec.warp.class === ExponentialWarp) {
-										wdgt.setOscMapping(\explin, i)
+										wdgt.setOscMapping(\linexp, i)
 									};
-									count = count + 1;
+									if (isMultiSlotCmd and:{
+										msgIndex < (incomingCmds[count][2]-1)
+									}) { msgIndex = msgIndex + 1 } {
+										count = count + 1;
+										msgIndex = 1;
+									}
 								}
 							}
 						});
