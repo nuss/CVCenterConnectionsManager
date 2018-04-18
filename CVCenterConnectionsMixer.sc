@@ -33,12 +33,12 @@ CVCenterConnectionsMixer {
 			widgetsToBeConnected = includeWidgets;
 		};
 
-		incomingCmds = ();
+		incomingCmds = [];
 		[includeWidgets, excludeWidgets].postln;
 	}
 
 	collectAddresses { |...cmdPatterns|
-		var addrKey;
+		var addrCmd;
 
 		cmdPatterns ?? {
 			Error("No command patterns given. Please provide at least one, e.g '/my/cmd'").throw;
@@ -46,15 +46,12 @@ CVCenterConnectionsMixer {
 
 		receiveFunc = { |msg, time, replyAddr, recvPort|
 			if (msg[0] != '/status.reply') {
+				addrCmd = [replyAddr, msg[0], msg.size];
 				cmdPatterns.do({ |pattern|
-					addrKey = (replyAddr.ip ++ ":" ++replyAddr.port).asSymbol;
-					if (pattern.matchRegexp(msg[0].asString)) {
-						if (incomingCmds.keys.includes(addrKey).not) {
-							incomingCmds.put(addrKey, []);
-						};
-						if (incomingCmds[addrKey].includes(msg[0]).not) {
-							incomingCmds[addrKey] = incomingCmds[addrKey].add(msg[0]);
-						}
+					if (pattern.matchRegexp(msg[0].asString) and:{
+						incomingCmds.includesEqual(addrCmd).not
+					}) {
+						incomingCmds = incomingCmds.add(addrCmd);
 					}
 				})
 			}
@@ -75,10 +72,63 @@ CVCenterConnectionsMixer {
 	}
 
 	connectWidgets {
+		var count = 0;
+
 		CVCenter.cvWidgets.pairsDo({ |key, wdgt|
 			if (widgetsToBeConnected.includes(key)) {
-				[key, wdgt].postln;
-				// TODO
+				switch(wdgt.class,
+					CVWidgetKnob, {
+						incomingCmds[count] !? {
+							wdgt.midiOscEnv.oscResponder ?? {
+								wdgt.oscConnect(
+									incomingCmds[count][0].ip,
+									incomingCmds[count][0].port,
+									incomingCmds[count][1]
+								);
+								if (wdgt.getSpec.warp.class === ExponentialWarp) {
+									wdgt.setOscMapping(\explin);
+								};
+								count = count + 1;
+							}
+						}
+					},
+					CVWidget2D, {
+						#[lo, hi].do({ |slot|
+							incomingCmds[count] !? {
+								wdgt.midiOscEnv[slot].oscResponder ?? {
+									wdgt.oscConnect(
+										incomingCmds[count][0].ip,
+										incomingCmds[count][0].port,
+										incomingCmds[count][1],
+										slot: slot
+									);
+									if (wdgt.getSpec(slot).warp.class === ExponentialWarp) {
+										wdgt.setOscMapping(\explin, slot);
+									};
+									count = count + 1;
+								}
+							}
+						})
+					},
+					CVWidgetMS, {
+						wdgt.msSize.do({ |i|
+							incomingCmds[count] !? {
+								wdgt.midiOscEnv[i].oscResponder ?? {
+									wdgt.oscConnect(
+										incomingCmds[count][0].ip,
+										incomingCmds[count][0].port,
+										incomingCmds[count][1],
+										slot: i
+									);
+									if (wdgt.getSpec.warp.class === ExponentialWarp) {
+										wdgt.setOscMapping(\explin, i)
+									};
+									count = count + 1;
+								}
+							}
+						});
+					}
+				)
 			}
 		});
 	}
