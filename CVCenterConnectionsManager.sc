@@ -1,4 +1,4 @@
-CVCenterConnectionsMixer {
+CVCenterConnectionsManager {
 	var <incomingCmds, receiveFunc;
 	var <widgetsToBeConnected;
 
