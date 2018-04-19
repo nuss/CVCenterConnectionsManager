@@ -79,24 +79,60 @@ CVCenterConnectionsManager {
 		var isMultiSlotCmd = false; // should be set to true if cmd has more than one value
 
 		CVCenter.cvWidgets.pairsDo({ |key, wdgt|
-			if (widgetsToBeConnected.includes(key)) {
+			if (widgetsToBeConnected.includes(key) and:{
+				count < incomingCmds.size
+			}) {
 				// more than one value per cmd
 				isMultiSlotCmd = incomingCmds[count][2] > 2;
 				switch(wdgt.class,
 					CVWidgetKnob, {
-						incomingCmds[count] !? {
-							wdgt.midiOscEnv.oscResponder ?? {
+						[key, count].postln;
+						if (incomingCmds[count].notNil and:{
+							wdgt.midiOscEnv.oscResponder.isNil
+						}) {
+							"CVWidgetKnob: '%', incomingCmds[%]: %, msgIndex: %, wdgt.class: %\n".postf(
+								key, count, incomingCmds[count], msgIndex, wdgt.class
+							);
+
+							wdgt.oscConnect(
+								incomingCmds[count][0].ip,
+								incomingCmds[count][0].port,
+								incomingCmds[count][1],
+								msgIndex,
+							);
+							if (wdgt.getSpec.warp.class === ExponentialWarp) {
+								wdgt.setOscMapping(\linexp);
+							};
+							// jump to the next value in cmd if cmd has more than one value
+							// otherwise increment count and go to next incoming cmd
+							if (isMultiSlotCmd and:{
+								msgIndex < (incomingCmds[count][2]-1)
+							}) { msgIndex = msgIndex + 1 } {
+								count = count + 1;
+								msgIndex = 1;
+							}
+						}
+					},
+					CVWidget2D, {
+						#[lo, hi].do({ |slot|
+							[key, count, slot].postln;
+							if (incomingCmds[count].notNil and:{
+								wdgt.midiOscEnv[slot].oscResponder.isNil
+							}) {
+								"CVWidget2D: '%', incomingCmds[%]: %, msgIndex: %, wdgt.class: %\n".postf(
+									key, count, incomingCmds[count], msgIndex, wdgt.class
+								);
+
 								wdgt.oscConnect(
 									incomingCmds[count][0].ip,
 									incomingCmds[count][0].port,
 									incomingCmds[count][1],
 									msgIndex,
+									slot
 								);
-								if (wdgt.getSpec.warp.class === ExponentialWarp) {
-									wdgt.setOscMapping(\linexp);
+								if (wdgt.getSpec(slot).warp.class === ExponentialWarp) {
+									wdgt.setOscMapping(\linexp, slot);
 								};
-								// jump to the next value in cmd if cmd has more than one value
-								// otherwise increment count and go to next incoming cmd
 								if (isMultiSlotCmd and:{
 									msgIndex < (incomingCmds[count][2]-1)
 								}) { msgIndex = msgIndex + 1 } {
@@ -104,55 +140,36 @@ CVCenterConnectionsManager {
 									msgIndex = 1;
 								}
 							}
-						}
-					},
-					CVWidget2D, {
-						#[lo, hi].do({ |slot|
-							incomingCmds[count] !? {
-								wdgt.midiOscEnv[slot].oscResponder ?? {
-									wdgt.oscConnect(
-										incomingCmds[count][0].ip,
-										incomingCmds[count][0].port,
-										incomingCmds[count][1],
-										msgIndex,
-										slot
-									);
-									if (wdgt.getSpec(slot).warp.class === ExponentialWarp) {
-										wdgt.setOscMapping(\linexp, slot);
-									};
-									if (isMultiSlotCmd and:{
-										msgIndex < (incomingCmds[count][2]-1)
-									}) { msgIndex = msgIndex + 1 } {
-										count = count + 1;
-										msgIndex = 1;
-									}
-								}
-							}
 						})
 					},
 					CVWidgetMS, {
 						wdgt.msSize.do({ |i|
-							incomingCmds[count] !? {
-								wdgt.midiOscEnv[i].oscResponder ?? {
-									wdgt.oscConnect(
-										incomingCmds[count][0].ip,
-										incomingCmds[count][0].port,
-										incomingCmds[count][1],
-										msgIndex,
-										i
-									);
-									if (wdgt.getSpec.warp.class === ExponentialWarp) {
-										wdgt.setOscMapping(\linexp, i)
-									};
-									if (isMultiSlotCmd and:{
-										msgIndex < (incomingCmds[count][2]-1)
-									}) { msgIndex = msgIndex + 1 } {
-										count = count + 1;
-										msgIndex = 1;
-									}
+							[key, count, i].postln;
+							if (incomingCmds[count].notNil and:{
+								wdgt.midiOscEnv[i].oscResponder.isNil
+							}) {
+								"CVWidgetMS: '%', incomingCmds[%]: %, msgIndex: %, wdgt.class: %\n".postf(
+									key, count, incomingCmds[count], msgIndex, wdgt.class
+								);
+
+								wdgt.oscConnect(
+									incomingCmds[count][0].ip,
+									incomingCmds[count][0].port,
+									incomingCmds[count][1],
+									msgIndex,
+									i
+								);
+								if (wdgt.getSpec.warp.class === ExponentialWarp) {
+									wdgt.setOscMapping(\linexp, i)
+								};
+								if (isMultiSlotCmd and:{
+									msgIndex < (incomingCmds[count][2]-1)
+								}) { msgIndex = msgIndex + 1 } {
+									count = count + 1;
+									msgIndex = 1;
 								}
 							}
-						});
+						})
 					}
 				)
 			}
