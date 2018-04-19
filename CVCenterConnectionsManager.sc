@@ -1,12 +1,26 @@
 CVCenterConnectionsManager {
+	classvar <all;
+	var name;
 	var <incomingCmds, receiveFunc;
 	var <widgetsToBeConnected;
 
-	*new { |includeWidgets, excludeWidgets|
-		^super.new.init(includeWidgets, excludeWidgets)
+	*new { |name, includeWidgets, excludeWidgets|
+		^super.newCopyArgs(name).init(name, includeWidgets, excludeWidgets)
 	}
 
-	init { |includeWidgets, excludeWidgets|
+	init { |name, includeWidgets, excludeWidgets|
+		name ?? {
+			Error("Please provide a name for the CVCenterConnectionsManager.").throw;
+		}
+
+		all ?? {
+			all = ();
+		};
+
+		if (all.keys.includes(name.asSymbol)) {
+			Error("There is already a CVCenterConnectionsManager stored under the name '%'. Please choose a different name.").throw;
+		} { all.put(name.asSymbol, this) };
+
 		excludeWidgets !? {
 			includeWidgets = nil;
 			if (excludeWidgets.isArray.not) {
@@ -19,6 +33,7 @@ CVCenterConnectionsManager {
 			widgetsToBeConnected = CVCenter.all.keys.copy.asArray.takeThese({ |item|
 				excludeWidgets.includes(item)
 			});
+			"excludeWidgets: widgetsToBeConnected: %\n".postf(widgetsToBeConnected);
 		};
 
 		includeWidgets !? {
@@ -30,6 +45,7 @@ CVCenterConnectionsManager {
 				}
 			};
 			widgetsToBeConnected = includeWidgets;
+			"includeWidgets: widgetsToBeConnected: %\n".postf(widgetsToBeConnected);
 		};
 
 		incomingCmds = [];
@@ -174,5 +190,35 @@ CVCenterConnectionsManager {
 				)
 			}
 		});
+
+		this.prMakeSlider;
+	}
+
+	prMakeSlider {
+		var sliderSize = 0;
+		var numSliders = 0;
+
+		incomingCmds.do({ |cmd|
+			// the number of values sent within a command
+			// should always be cmd[2]-1 - first slot is the command name
+			sliderSize = sliderSize + cmd[2]-1;
+		});
+
+		widgetsToBeConnected.do({ |key|
+			switch(CVCenter.cvWidgets[key].class,
+				CVWidgetKnob, { numSliders = numSliders+1 },
+				CVWidget2D, { numSliders = numSliders+2 },
+				CVWidgetMS, {
+					numSliders = numSliders + CVCenter.cvWidgets[key].msSize
+				}
+			)
+		});
+
+		CVCenter.use(
+			name.asSymbol,
+			[0, sliderSize-1, \lin, 1, 0]!numSliders,
+			0, // TODO: value
+			\default
+		)
 	}
 }
