@@ -11,7 +11,7 @@ CVCenterConnectionsManager {
 	init { |name, includeWidgets, excludeWidgets|
 		name ?? {
 			Error("Please provide a name for the CVCenterConnectionsManager.").throw;
-		}
+		};
 
 		all ?? {
 			all = ();
