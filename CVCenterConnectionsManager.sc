@@ -1,6 +1,6 @@
 CVCenterConnectionsManager {
 	classvar <all;
-	var name;
+	var <name;
 	var <incomingCmds, receiveFunc;
 	var <widgetsToBeConnected;
 
@@ -197,28 +197,148 @@ CVCenterConnectionsManager {
 	prMakeSlider {
 		var sliderSize = 0;
 		var numSliders = 0;
+		var mixerIndices = [];
+		var index = 0;
+		var cmdName;
+		var makeWidget;
+		var tmpSize;
 
-		incomingCmds.do({ |cmd|
+		CVCenter.getCmdNamesAndAddressesInUse.do({ |cmd|
+			"cmd: %\n".postf(cmd);
 			// the number of values sent within a command
 			// should always be cmd[2]-1 - first slot is the command name
-			sliderSize = sliderSize + cmd[2]-1;
+			// cmd[2]-1 must be retrieved from incomingCmds
+			// since we don't get it from CVCenter'
+			tmpSize = incomingCmds.detect({ |n| n[1] === cmd[1] })[2];
+			"tmpSize: %\n".postf(tmpSize);
+			sliderSize = sliderSize + tmpSize-1;
 		});
 
-		widgetsToBeConnected.do({ |key|
-			switch(CVCenter.cvWidgets[key].class,
-				CVWidgetKnob, { numSliders = numSliders+1 },
-				CVWidget2D, { numSliders = numSliders+2 },
+		widgetsToBeConnected.do({ |key, i|
+			switch (CVCenter.cvWidgets[key].class,
+				CVWidgetKnob, {
+					numSliders = numSliders + 1;
+					// value = CVCenter.at(key).value;
+					"knob '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv[i]);
+					CVCenter.cvWidgets[key].midiOscEnv.oscResponder !? {
+						cmdName = CVCenter.cvWidgets[key].midiOscEnv.oscResponder.cmdName;
+						mixerIndices = mixerIndices.add([cmdName, index]);
+						index = index + 1;
+					}
+					// "value: %\n".postf(value);
+					// "knob: %\n".postf([key, i]);
+				},
+				CVWidget2D, {
+					numSliders = numSliders + 2;
+					#[lo, hi].do({ |slot|
+						CVCenter.cvWidgets[key].midiOscEnv[slot].oscResponder !? {
+							cmdName = CVCenter.cvWidgets[key].midiOscEnv[slot].oscResponder.cmdName;
+							mixerIndices = mixerIndices.add([cmdName, index]);
+							index = index + 1;
+						}
+					})
+					// "2D: %\n".postf([key, i]);
+				},
 				CVWidgetMS, {
-					numSliders = numSliders + CVCenter.cvWidgets[key].msSize
+					numSliders = numSliders + CVCenter.cvWidgets[key].msSize;
+					numSliders.do({ |j|
+						if (CVCenter.cvWidgets[key].midiOscEnv[j].notNil and: {
+							CVCenter.cvWidgets[key].midiOscEnv[j].oscResponder.notNil
+						}) {
+							cmdName = CVCenter.cvWidgets[key].midiOscEnv[j].oscResponder.cmdName;
+							mixerIndices = mixerIndices.add([cmdName, index]);
+							index = index + 1
+						}
+					});
+					// "ms: %\n".postf([key, i]);
 				}
 			)
 		});
 
+		"mixerIndices: %\n".postf(mixerIndices);
+
+		mixerIndices = mixerIndices.flop.postln;
+
+		CVCenter.scv.connectionsManager ?? {
+			CVCenter.scv.put(\connectionsManager, ());
+		};
+
+		CVCenter.scv.connectionsManager.put(name.asSymbol, this);
+		// "incomingCmds: %\n".postf(CVCenter.scv.connectionsManager[name.asSymbol].incomingCmds);
+
 		CVCenter.use(
 			name.asSymbol,
-			[0, sliderSize-1, \lin, 1, 0]!numSliders,
-			0, // TODO: value
-			\default
-		)
+			[0, incomingCmds.size-1, \lin, 1, 0]!numSliders,
+			mixerIndices[1],
+			\default/*,
+			svItems: mixerIndices[0]!numSliders*/
+		);
+
+		CVCenter.addActionAt(name.asSymbol, 'switch responder', { |cv|
+			var valCount = 0;
+			[cv.value.size, widgetsToBeConnected.size].postln;
+			// var is2d = false;
+			widgetsToBeConnected.do({ |key, i|
+				switch(CVCenter.cvWidgets[key].class,
+					CVWidget2D, {
+						#[lo, hi].do({ |slot|
+							if (valCount < cv.value.size) {
+								CVCenter.cvWidgets[key].oscDisconnect(slot);
+								CVCenter.cvWidgets[key].oscConnect(
+									incomingCmds[cv.value[valCount]][0].ip,
+									incomingCmds[cv.value[valCount]][0].port,
+									incomingCmds[cv.value[valCount]][1],
+									1,
+									slot
+								);
+								valCount = valCount + 1;
+							}
+						});
+					},
+					CVWidgetMS, {
+						CVCenter.cvWidgets[key].msSize.do({ |i|
+							if (valCount < cv.value.size) {
+								CVCenter.cvWidgets[key].oscDisconnect(i);
+								CVCenter.cvWidgets[key].oscConnect(
+									incomingCmds[cv.value[valCount]][0].ip,
+									incomingCmds[cv.value[valCount]][0].port,
+									incomingCmds[cv.value[valCount]][1],
+									1,
+									i
+								);
+								valCount = valCount + 1;
+							}
+						})
+					},
+					CVWidgetKnob, {
+						if (valCount < cv.value.size) {
+							CVCenter.cvWidgets[key].oscDisconnect;
+							CVCenter.cvWidgets[key].oscConnect(
+								incomingCmds[cv.value[valCount]][0].ip,
+								incomingCmds[cv.value[valCount]][0].port,
+								incomingCmds[cv.value[valCount]][1],
+								1
+							);
+							valCount = valCount + 1;
+						}
+					}
+				)
+			})
+		})
+	}
+
+	filterVideOSC {
+
+	}
+
+	*clear {
+		all.pairsDo({ |k, v| v.clear });
+	}
+
+	clear {
+		incomingCmds = [];
+		widgetsToBeConnected = [];
+		all.removeAt(name.asSymbol);
+		name = nil;
 	}
 }
