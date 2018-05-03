@@ -327,7 +327,47 @@ CVCenterConnectionsManager {
 		})
 	}
 
-	filterVideOSC {
+	filterVideOSC { |wdgts|
+		// TODO: how pass widget names in
+		var name, valName, mixName;
+		var tab, valTab, mixTab;
+		wdgts.do({ |w|
+			name = CVCenter.cvWidgets[w].name;
+			valName = ("val" ++ name[0].toUpper ++ name[1..]);
+			mixName = ("mix" ++ name[0].toUpper ++ name[1..]);
+			tab = CVCenter.getTab(w);
+			valTab = "val" ++ tab.asString[0].toUpper ++ tab.asString[1..];
+			mixTab = "mix" ++ tab.asString[0].toUpper ++ tab.asString[1..];
+
+			switch (CVCenter.cvWidgets[w].class,
+				CVWidget2D, {
+					#[lo, hi].do({ |slot|
+						CVCenter.use(
+							valName,
+							CVCenter.cvWidgets[w].getSpec(slot),
+							CVCenter.at(w).value,
+							valTab,
+							slot
+						);
+						CVCenter.use(
+							mixName,
+							nil,
+							0,
+							mixTab,
+							slot
+						)
+					})
+				},
+				{
+					CVCenter.use(
+						valName,
+						CVCenter.cvWidgets[w].getSpec;
+						CVCenter.at(w).value,
+						valTab
+					)
+				}
+			)
+		})
 
 	}
 
