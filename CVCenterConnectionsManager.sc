@@ -32,7 +32,7 @@ CVCenterConnectionsManager {
 			};
 			widgetsToBeConnected = CVCenter.all.keys.copy.asArray.takeThese({ |item|
 				excludeWidgets.includes(item)
-			});
+			}).sort;
 			"excludeWidgets: widgetsToBeConnected: %\n".postf(widgetsToBeConnected);
 		};
 
@@ -44,7 +44,7 @@ CVCenterConnectionsManager {
 					Error("arg 'includeWigets' includes values that are neither Strings nor Symbols!").throw;
 				}
 			};
-			widgetsToBeConnected = includeWidgets;
+			widgetsToBeConnected = includeWidgets.sort;
 			"includeWidgets: widgetsToBeConnected: %\n".postf(widgetsToBeConnected);
 		};
 
@@ -327,48 +327,124 @@ CVCenterConnectionsManager {
 		})
 	}
 
-	filterVideOSC { |wdgts|
+	filterVideOSC { |...wdgts|
 		// TODO: how pass widget names in
 		var name, valName, mixName;
 		var tab, valTab, mixTab;
-		wdgts.do({ |w|
-			name = CVCenter.cvWidgets[w].name;
-			valName = ("val" ++ name[0].toUpper ++ name[1..]);
-			mixName = ("mix" ++ name[0].toUpper ++ name[1..]);
-			tab = CVCenter.getTab(w);
-			valTab = "val" ++ tab.asString[0].toUpper ++ tab.asString[1..];
-			mixTab = "mix" ++ tab.asString[0].toUpper ++ tab.asString[1..];
+		var thisWdgts = [];
+		var nilSpec;
 
-			switch (CVCenter.cvWidgets[w].class,
-				CVWidget2D, {
-					#[lo, hi].do({ |slot|
+		var action, newAction, match, matchedName;
+
+		// allow regex as argument
+		wdgts.do({ |wdgt|
+			thisWdgts = thisWdgts.add(CVCenter.all.keys.selectAs({ |name|
+				wdgt.asString.matchRegexp(name.asString);
+			}, Array));
+		});
+
+
+		if (thisWdgts.flat.size > 0) {
+			thisWdgts.flat.do({ |w|
+				valName = ("val" ++ w.asString[0].toUpper ++ w.asString[1..]).asSymbol;
+				mixName = ("mix" ++ w.asString[0].toUpper ++ w.asString[1..]).asSymbol;
+				tab = CVCenter.getTab(w).asString;
+				valTab = "val" ++ tab[0].toUpper ++ tab[1..].asSymbol;
+				mixTab = "mix" ++ tab[0].toUpper ++ tab[1..].asSymbol;
+
+				switch (CVCenter.cvWidgets[w].class,
+					CVWidget2D, {
+						#[lo, hi].do({ |slot|
+							CVCenter.use(
+								valName,
+								CVCenter.at(w)[slot].spec,
+								CVCenter.at(w).value[slot],
+								valTab,
+								slot
+							);
+							CVCenter.use(
+								mixName,
+								nil,
+								0,
+								mixTab,
+								slot
+							);
+
+							CVCenter.cvWidgets[valName].setOscMapping(CVCenter.cvWidgets[w].getOscMapping(slot), slot);
+
+							// get the action of the original widgt
+							action = CVCenter.cvWidgets[w].wdgtActions[slot].default1.asArray[0][0].asCompileString;
+							// what we later replace in the function string
+							matchedName = action.findRegexp("\\[(.+)\\]");
+
+							// must be a compile string...
+							newAction =
+							"{ |cv|
+								var n = '" ++ w ++ "';
+								var vn = '" ++ valName ++ "';
+								var mn = '" ++ mixName ++ "';
+								var mixed = ();
+								mixed.put('lo', CVCenter.at(vn).lo.value * CVCenter.at(mn).lo.input + (CVCenter.at(n).lo.value * (1 - CVCenter.at(mn).lo.input)));
+								mixed.put('hi', CVCenter.at(vn).hi.value * CVCenter.at(mn).hi.input + (CVCenter.at(n).hi.value * (1 - CVCenter.at(mn).hi.input)));
+							";
+
+							// old action, replace values by mix of manually set values and values coming from videosc
+							newAction = newAction ++ action[7..action.size-3].replace(matchedName[0][1], "[mixed.lo, mixed.hi]");
+							newAction = newAction ++ "}";
+
+							// disable old default action
+							CVCenter.activateActionAt(w, \default1, false, slot);
+							// add new action
+							CVCenter.addActionAt(w, 'VideOSC mix', newAction, slot);
+						});
+					},
+					{
+						if (CVCenter.cvWidgets[w].class == CVWidgetMS) {
+							nilSpec = nil ! CVCenter.cvWidgets[w].msSize;
+							CVCenter.cvWidgets[w].msSize.do({ |i|
+								CVCenter.cvWidgets[w].setOscMapping(CVCenter.cvWidgets[w].getOscMapping(i), i);
+							})
+						} {
+							nilSpec = nil;
+							CVCenter.cvWidgets[w].setOscMapping(CVCenter.cvWidgets[w].getOscMapping);
+						};
 						CVCenter.use(
 							valName,
-							CVCenter.cvWidgets[w].getSpec(slot),
+							CVCenter.at(w).spec,
 							CVCenter.at(w).value,
-							valTab,
-							slot
+							valTab
 						);
 						CVCenter.use(
 							mixName,
-							nil,
-							0,
-							mixTab,
-							slot
-						)
-					})
-				},
-				{
-					CVCenter.use(
-						valName,
-						CVCenter.cvWidgets[w].getSpec;
-						CVCenter.at(w).value,
-						valTab
-					)
-				}
-			)
-		})
+							nilSpec,
+							CVCenter.at(w).value,
+							mixTab
+						);
 
+
+
+						action = CVCenter.cvWidgets[w].wdgtActions.default1.asArray[0][0];
+
+						newAction =
+						"{ |cv|
+							var n = '" ++ w ++ "';
+							var vn = '" ++ valName ++ "';
+							var mn = '" ++ mixName ++ "';
+							var mixed = CVCenter.at(vn).value * CVCenter.at(mn).input + (CVCenter.at(n).value * (1 - CVCenter.at(mn).input));
+						";
+						newAction = newAction ++ action[7..action.size-2].replace("cv.value", "mixed");
+						newAction = newAction ++ "}";
+
+						// disable old default action
+						CVCenter.activateActionAt(w, \default1, false);
+						// add new action
+						CVCenter.addActionAt(w, 'VideOSC mix', newAction);
+					}
+				);
+
+
+			})
+		}
 	}
 
 	*clear {
