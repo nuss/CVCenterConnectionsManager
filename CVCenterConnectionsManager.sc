@@ -18,7 +18,7 @@ CVCenterConnectionsManager {
 		};
 
 		if (all.keys.includes(name.asSymbol)) {
-			Error("There is already a CVCenterConnectionsManager stored under the name '%'. Please choose a different name.").throw;
+			Error("There is already a CVCenterConnectionsManager stored under the name '%'. Please choose a different name.".format(name)).throw;
 		} { all.put(name.asSymbol, this) };
 
 		excludeWidgets !? {
@@ -89,7 +89,7 @@ CVCenterConnectionsManager {
 		});
 	}
 
-	connectWidgets {
+	connectWidgets { |addMixer = false|
 		var count = 0; // iteration over incomingCmds
 		var msgIndex = 1; // a cmd may have more than 1 value
 		var isMultiSlotCmd = false; // should be set to true if cmd has more than one value
@@ -164,10 +164,6 @@ CVCenterConnectionsManager {
 							if (incomingCmds[count].notNil and:{
 								wdgt.midiOscEnv[i].oscResponder.isNil
 							}) {
-								"CVWidgetMS: '%', incomingCmds[%]: %, msgIndex: %, wdgt.class: %\n".postf(
-									key, count, incomingCmds[count], msgIndex, wdgt.class
-								);
-
 								wdgt.oscConnect(
 									incomingCmds[count][0].ip,
 									incomingCmds[count][0].port,
@@ -191,7 +187,11 @@ CVCenterConnectionsManager {
 			}
 		});
 
-		this.prMakeSlider;
+		"connecting sliders done".postln;
+
+		if (addMixer) {
+			this.prMakeSlider;
+		}
 	}
 
 	prMakeSlider {
@@ -204,32 +204,31 @@ CVCenterConnectionsManager {
 		var tmpSize;
 
 		CVCenter.getCmdNamesAndAddressesInUse.do({ |cmd|
-			"cmd: %\n".postf(cmd);
 			// the number of values sent within a command
 			// should always be cmd[2]-1 - first slot is the command name
 			// cmd[2]-1 must be retrieved from incomingCmds
 			// since we don't get it from CVCenter'
+			"cmd: %, incomingCmds: %\n".postf(cmd, incomingCmds);
 			tmpSize = incomingCmds.detect({ |n| n[1] === cmd[1] })[2];
 			"tmpSize: %\n".postf(tmpSize);
 			sliderSize = sliderSize + tmpSize-1;
+			"cmd: %, sliderSize: %\n".postf(cmd, sliderSize);
 		});
 
 		widgetsToBeConnected.do({ |key, i|
 			switch (CVCenter.cvWidgets[key].class,
 				CVWidgetKnob, {
 					numSliders = numSliders + 1;
-					// value = CVCenter.at(key).value;
-					"knob '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv[i]);
+					"knob '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
 					CVCenter.cvWidgets[key].midiOscEnv.oscResponder !? {
 						cmdName = CVCenter.cvWidgets[key].midiOscEnv.oscResponder.cmdName;
 						mixerIndices = mixerIndices.add([cmdName, index]);
 						index = index + 1;
 					}
-					// "value: %\n".postf(value);
-					// "knob: %\n".postf([key, i]);
 				},
 				CVWidget2D, {
 					numSliders = numSliders + 2;
+					"2D '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
 					#[lo, hi].do({ |slot|
 						CVCenter.cvWidgets[key].midiOscEnv[slot].oscResponder !? {
 							cmdName = CVCenter.cvWidgets[key].midiOscEnv[slot].oscResponder.cmdName;
@@ -241,6 +240,7 @@ CVCenterConnectionsManager {
 				},
 				CVWidgetMS, {
 					numSliders = numSliders + CVCenter.cvWidgets[key].msSize;
+					"ms '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
 					numSliders.do({ |j|
 						if (CVCenter.cvWidgets[key].midiOscEnv[j].notNil and: {
 							CVCenter.cvWidgets[key].midiOscEnv[j].oscResponder.notNil
@@ -384,8 +384,14 @@ CVCenterConnectionsManager {
 								var vn = '" ++ valName ++ "';
 								var mn = '" ++ mixName ++ "';
 								var mixed = ();
-								mixed.put('lo', CVCenter.at(vn).lo.value * CVCenter.at(mn).lo.input + (CVCenter.at(n).lo.value * (1 - CVCenter.at(mn).lo.input)));
-								mixed.put('hi', CVCenter.at(vn).hi.value * CVCenter.at(mn).hi.input + (CVCenter.at(n).hi.value * (1 - CVCenter.at(mn).hi.input)));
+								var cubedLo1 = CVCenter.at(mn).lo.input.cubed;
+								var cubedLo2 = (1 - CVCenter.at(mn).lo.input).cubed;
+								var multLo = 1/(cubedLo1 + cubedLo2);
+								var cubedHi1 = CVCenter.at(mn).hi.input.cubed;
+								var cubedHi2 = (1 - CVCenter.at(mn).hi.input).cubed;
+								var multHi = (cubedHi1 + cubedHi2).reciprocal;
+								mixed.put('lo', CVCenter.at(vn).lo.value * cubedLo1 * multLo + (cv.value * cubedLo2 * multLo));
+								mixed.put('hi', CVCenter.at(vn).hi.value * cubedHi1 * multHi + (cv.value * cubedHi2 * multHi));
 							";
 
 							// old action, replace values by mix of manually set values and values coming from videosc
@@ -421,16 +427,16 @@ CVCenterConnectionsManager {
 							mixTab
 						);
 
-
-
 						action = CVCenter.cvWidgets[w].wdgtActions.default1.asArray[0][0];
 
 						newAction =
 						"{ |cv|
-							var n = '" ++ w ++ "';
 							var vn = '" ++ valName ++ "';
 							var mn = '" ++ mixName ++ "';
-							var mixed = CVCenter.at(vn).value * CVCenter.at(mn).input + (CVCenter.at(n).value * (1 - CVCenter.at(mn).input));
+							var cubed1 = CVCenter.at(mn).input.cubed;
+							var cubed2 = (1 - CVCenter.at(mn).input).cubed;
+							var mult = (cubed1 + cubed2).reciprocal;
+							var mixed = CVCenter.at(vn).value * cubed1 * mult  + (cv.value * cubed2 * mult);
 						";
 						newAction = newAction ++ action[7..action.size-2].replace("cv.value", "mixed");
 						newAction = newAction ++ "}";
