@@ -89,6 +89,26 @@ CVCenterConnectionsManager {
 		});
 	}
 
+	orderVideOSCCmds {
+		var red, green, blue;
+
+		red = incomingCmds.select { |cmdData| "red".matchRegexp(cmdData[1].asString) };
+		green = incomingCmds.select { |cmdData| "green".matchRegexp(cmdData[1].asString) };
+		blue = incomingCmds.select { |cmdData| "blue".matchRegexp(cmdData[1].asString) };
+
+		red = red.sort({ |a, b|
+			a[1].asString.select { |s| s.isDecDigit }.asInteger < b[1].asString.select { |s| s.isDecDigit }.asInteger;
+		});
+		green = green.sort({ |a, b|
+			a[1].asString.select { |s| s.isDecDigit }.asInteger < b[1].asString.select { |s| s.isDecDigit }.asInteger;
+		});
+		blue = blue.sort({ |a, b|
+			a[1].asString.select { |s| s.isDecDigit }.asInteger < b[1].asString.select { |s| s.isDecDigit }.asInteger;
+		});
+
+		incomingCmds = red ++ green ++ blue;
+	}
+
 	connectWidgets { |addMixer = false|
 		var count = 0; // iteration over incomingCmds
 		var msgIndex = 1; // a cmd may have more than 1 value
@@ -159,7 +179,7 @@ CVCenterConnectionsManager {
 						})
 					},
 					CVWidgetMS, {
-						wdgt.msSize.do({ |i|
+						wdgt.size.do({ |i|
 							[key, count, i].postln;
 							if (incomingCmds[count].notNil and:{
 								wdgt.midiOscEnv[i].oscResponder.isNil
@@ -239,7 +259,7 @@ CVCenterConnectionsManager {
 					// "2D: %\n".postf([key, i]);
 				},
 				CVWidgetMS, {
-					numSliders = numSliders + CVCenter.cvWidgets[key].msSize;
+					numSliders = numSliders + CVCenter.cvWidgets[key].size;
 					"ms '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
 					numSliders.do({ |j|
 						if (CVCenter.cvWidgets[key].midiOscEnv[j].notNil and: {
@@ -296,7 +316,7 @@ CVCenterConnectionsManager {
 						});
 					},
 					CVWidgetMS, {
-						CVCenter.cvWidgets[key].msSize.do({ |i|
+						CVCenter.cvWidgets[key].size.do({ |i|
 							if (valCount < cv.value.size) {
 								CVCenter.cvWidgets[key].oscDisconnect(i);
 								CVCenter.cvWidgets[key].oscConnect(
@@ -406,8 +426,8 @@ CVCenterConnectionsManager {
 					},
 					{
 						if (CVCenter.cvWidgets[w].class == CVWidgetMS) {
-							nilSpec = nil ! CVCenter.cvWidgets[w].msSize;
-							CVCenter.cvWidgets[w].msSize.do({ |i|
+							nilSpec = nil ! CVCenter.cvWidgets[w].size;
+							CVCenter.cvWidgets[w].size.do({ |i|
 								CVCenter.cvWidgets[w].setOscMapping(CVCenter.cvWidgets[w].getOscMapping(i), i);
 							})
 						} {
