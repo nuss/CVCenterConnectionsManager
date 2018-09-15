@@ -92,18 +92,24 @@ CVCenterConnectionsManager {
 	orderVideOSCCmds {
 		var red, green, blue;
 
-		red = incomingCmds.select { |cmdData| "red".matchRegexp(cmdData[1].asString) };
-		green = incomingCmds.select { |cmdData| "green".matchRegexp(cmdData[1].asString) };
-		blue = incomingCmds.select { |cmdData| "blue".matchRegexp(cmdData[1].asString) };
+		red = incomingCmds.select { |cmdData| "/.+/red[0-9]+".matchRegexp(cmdData[1].asString) };
+		green = incomingCmds.select { |cmdData| "/.+/green[0-9]+".matchRegexp(cmdData[1].asString) };
+		blue = incomingCmds.select { |cmdData| "/.+/blue[0-9]+".matchRegexp(cmdData[1].asString) };
 
 		red = red.sort({ |a, b|
-			a[1].asString.select { |s| s.isDecDigit }.asInteger < b[1].asString.select { |s| s.isDecDigit }.asInteger;
+			a = a[1].asString.split($/).last;
+			b = b[1].asString.split($/).last;
+			a.select { |s| s.isDecDigit }.asInteger < b.select { |s| s.isDecDigit }.asInteger;
 		});
 		green = green.sort({ |a, b|
-			a[1].asString.select { |s| s.isDecDigit }.asInteger < b[1].asString.select { |s| s.isDecDigit }.asInteger;
+			a = a[1].asString.split($/).last;
+			b = b[1].asString.split($/).last;
+			a.select { |s| s.isDecDigit }.asInteger < b.select { |s| s.isDecDigit }.asInteger;
 		});
 		blue = blue.sort({ |a, b|
-			a[1].asString.select { |s| s.isDecDigit }.asInteger < b[1].asString.select { |s| s.isDecDigit }.asInteger;
+			a = a[1].asString.split($/).last;
+			b = b[1].asString.split($/).last;
+			a.select { |s| s.isDecDigit }.asInteger < b.select { |s| s.isDecDigit }.asInteger;
 		});
 
 		incomingCmds = red ++ green ++ blue;
