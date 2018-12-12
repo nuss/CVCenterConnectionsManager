@@ -4,6 +4,7 @@ CVCenterConnectionsManager {
 	var <incomingCmds, receiveFunc;
 	var <widgetsToBeConnected;
 
+	// TODO: netAddress should be passed in as second arg
 	*new { |name, includeWidgets, excludeWidgets|
 		^super.newCopyArgs(name).init(name, includeWidgets, excludeWidgets)
 	}
@@ -55,8 +56,9 @@ CVCenterConnectionsManager {
 	// or a regular expression like "/[a-z1-4]+/(fader|slider)[1-9]+"
 	// TODO: exclude status commands like "/ping" or similar
 	// that some controllers may emmit at irregular intervals
-	collectAddresses { |...cmdPatterns|
-		var addrCmd;
+	collectAddresses { |netAddress ...cmdPatterns|
+		var addrCmd, cmdsInUse = CVCenter.getCmdNamesAndAddressesInUse;
+		var cmds = cmdsInUse.collect { |it| it[1] };
 
 		cmdPatterns ?? {
 			Error("No command patterns given. Please provide at least one, e.g '/my/cmd'").throw;
@@ -69,7 +71,26 @@ CVCenterConnectionsManager {
 					if (pattern.matchRegexp(msg[0].asString) and:{
 						incomingCmds.includesEqual(addrCmd).not
 					}) {
-						incomingCmds = incomingCmds.add(addrCmd);
+						case
+						{ netAddress.isNil } {
+							if (cmds.indexOfEqual(addrCmd[1]).isNil) {
+								incomingCmds = incomingCmds.add(addrCmd);
+							}
+						}
+						{ netAddress.notNil and:{ netAddress.port.isNil }} {
+							if (addrCmd[0].ip == netAddress.ip and: {
+								cmdsInUse.detect { |it| it[0].ip == addrCmd[0].ip and: { it[1] == addrCmd[1] }}.isNil
+							}) {
+								incomingCmds = incomingCmds.add(addrCmd);
+							}
+						}
+						{ netAddress.notNil and: { netAddress.port.notNil }} {
+							if (addrCmd[0] == netAddress and: {
+								cmdsInUse.detect { |it| it[0] == addrCmd[0] and: { it[1] == addrCmd[1] }}.isNil
+							}) {
+								incomingCmds = incomingCmds.add(addrCmd);
+							}
+						}
 					}
 				})
 			}
@@ -115,13 +136,20 @@ CVCenterConnectionsManager {
 		incomingCmds = red ++ green ++ blue;
 	}
 
-	connectWidgets { |addMixer = false|
+	clearCmds {
+		incomingCmds = [];
+	}
+
+	connectWidgets { |...widgets|
 		var count = 0; // iteration over incomingCmds
 		var msgIndex = 1; // a cmd may have more than 1 value
 		var isMultiSlotCmd = false; // should be set to true if cmd has more than one value
+		var thisWidgetsToBeConnected = widgets ?? {
+			widgetsToBeConnected
+		};
 
 		CVCenter.cvWidgets.pairsDo({ |key, wdgt|
-			if (widgetsToBeConnected.includes(key) and:{
+			if (thisWidgetsToBeConnected.includes(key) and:{
 				count < incomingCmds.size
 			}) {
 				// more than one value per cmd
@@ -214,143 +242,6 @@ CVCenterConnectionsManager {
 		});
 
 		"connecting sliders done".postln;
-
-		if (addMixer) {
-			this.prMakeSlider;
-		}
-	}
-
-	prMakeSlider {
-		var sliderSize = 0;
-		var numSliders = 0;
-		var mixerIndices = [];
-		var index = 0;
-		var cmdName;
-		var makeWidget;
-		var tmpSize;
-
-		CVCenter.getCmdNamesAndAddressesInUse.do({ |cmd|
-			// the number of values sent within a command
-			// should always be cmd[2]-1 - first slot is the command name
-			// cmd[2]-1 must be retrieved from incomingCmds
-			// since we don't get it from CVCenter'
-			"cmd: %, incomingCmds: %\n".postf(cmd, incomingCmds);
-			tmpSize = incomingCmds.detect({ |n| n[1] === cmd[1] })[2];
-			"tmpSize: %\n".postf(tmpSize);
-			sliderSize = sliderSize + tmpSize-1;
-			"cmd: %, sliderSize: %\n".postf(cmd, sliderSize);
-		});
-
-		widgetsToBeConnected.do({ |key, i|
-			switch (CVCenter.cvWidgets[key].class,
-				CVWidgetKnob, {
-					numSliders = numSliders + 1;
-					"knob '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
-					CVCenter.cvWidgets[key].midiOscEnv.oscResponder !? {
-						cmdName = CVCenter.cvWidgets[key].midiOscEnv.oscResponder.cmdName;
-						mixerIndices = mixerIndices.add([cmdName, index]);
-						index = index + 1;
-					}
-				},
-				CVWidget2D, {
-					numSliders = numSliders + 2;
-					"2D '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
-					#[lo, hi].do({ |slot|
-						CVCenter.cvWidgets[key].midiOscEnv[slot].oscResponder !? {
-							cmdName = CVCenter.cvWidgets[key].midiOscEnv[slot].oscResponder.cmdName;
-							mixerIndices = mixerIndices.add([cmdName, index]);
-							index = index + 1;
-						}
-					})
-					// "2D: %\n".postf([key, i]);
-				},
-				CVWidgetMS, {
-					numSliders = numSliders + CVCenter.cvWidgets[key].size;
-					"ms '%': %\n".postf(key, CVCenter.cvWidgets[key].midiOscEnv);
-					numSliders.do({ |j|
-						if (CVCenter.cvWidgets[key].midiOscEnv[j].notNil and: {
-							CVCenter.cvWidgets[key].midiOscEnv[j].oscResponder.notNil
-						}) {
-							cmdName = CVCenter.cvWidgets[key].midiOscEnv[j].oscResponder.cmdName;
-							mixerIndices = mixerIndices.add([cmdName, index]);
-							index = index + 1
-						}
-					});
-					// "ms: %\n".postf([key, i]);
-				}
-			)
-		});
-
-		"mixerIndices: %\n".postf(mixerIndices);
-
-		mixerIndices = mixerIndices.flop.postln;
-
-		CVCenter.scv.connectionsManager ?? {
-			CVCenter.scv.put(\connectionsManager, ());
-		};
-
-		CVCenter.scv.connectionsManager.put(name.asSymbol, this);
-		// "incomingCmds: %\n".postf(CVCenter.scv.connectionsManager[name.asSymbol].incomingCmds);
-
-		CVCenter.use(
-			name.asSymbol,
-			[0, incomingCmds.size-1, \lin, 1, 0]!numSliders,
-			mixerIndices[1],
-			\default/*,
-			svItems: mixerIndices[0]!numSliders*/
-		);
-
-		CVCenter.addActionAt(name.asSymbol, 'switch responder', { |cv|
-			var valCount = 0;
-			[cv.value.size, widgetsToBeConnected.size].postln;
-			// var is2d = false;
-			widgetsToBeConnected.do({ |key, i|
-				switch(CVCenter.cvWidgets[key].class,
-					CVWidget2D, {
-						#[lo, hi].do({ |slot|
-							if (valCount < cv.value.size) {
-								CVCenter.cvWidgets[key].oscDisconnect(slot);
-								CVCenter.cvWidgets[key].oscConnect(
-									incomingCmds[cv.value[valCount]][0].ip,
-									incomingCmds[cv.value[valCount]][0].port,
-									incomingCmds[cv.value[valCount]][1],
-									1,
-									slot
-								);
-								valCount = valCount + 1;
-							}
-						});
-					},
-					CVWidgetMS, {
-						CVCenter.cvWidgets[key].size.do({ |i|
-							if (valCount < cv.value.size) {
-								CVCenter.cvWidgets[key].oscDisconnect(i);
-								CVCenter.cvWidgets[key].oscConnect(
-									incomingCmds[cv.value[valCount]][0].ip,
-									incomingCmds[cv.value[valCount]][0].port,
-									incomingCmds[cv.value[valCount]][1],
-									1,
-									i
-								);
-								valCount = valCount + 1;
-							}
-						})
-					},
-					CVWidgetKnob, {
-						if (valCount < cv.value.size) {
-							CVCenter.cvWidgets[key].oscDisconnect;
-							CVCenter.cvWidgets[key].oscConnect(
-								incomingCmds[cv.value[valCount]][0].ip,
-								incomingCmds[cv.value[valCount]][0].port,
-								incomingCmds[cv.value[valCount]][1],
-								1
-							);
-							valCount = valCount + 1;
-						}
-					}
-				)
-			})
-		})
 	}
 
 	filterVideOSC { |...wdgts|
