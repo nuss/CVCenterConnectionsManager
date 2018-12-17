@@ -144,8 +144,12 @@ CVCenterConnectionsManager {
 		var count = 0; // iteration over incomingCmds
 		var msgIndex = 1; // a cmd may have more than 1 value
 		var isMultiSlotCmd = false; // should be set to true if cmd has more than one value
-		var thisWidgetsToBeConnected = widgets ?? {
-			widgetsToBeConnected
+		var thisWidgetsToBeConnected;
+
+		if (widgets.isEmpty) {
+			thisWidgetsToBeConnected = widgetsToBeConnected;
+		} {
+			thisWidgetsToBeConnected = widgets;
 		};
 
 		CVCenter.cvWidgets.pairsDo({ |key, wdgt|
@@ -156,7 +160,7 @@ CVCenterConnectionsManager {
 				isMultiSlotCmd = incomingCmds[count][2] > 2;
 				switch(wdgt.class,
 					CVWidgetKnob, {
-						[key, count].postln;
+						// [key, count].postln;
 						if (incomingCmds[count].notNil and:{
 							wdgt.midiOscEnv.oscResponder.isNil
 						}) {
@@ -185,7 +189,7 @@ CVCenterConnectionsManager {
 					},
 					CVWidget2D, {
 						#[lo, hi].do({ |slot|
-							[key, count, slot].postln;
+							// [key, count, slot].postln;
 							if (incomingCmds[count].notNil and:{
 								wdgt.midiOscEnv[slot].oscResponder.isNil
 							}) {
@@ -214,10 +218,14 @@ CVCenterConnectionsManager {
 					},
 					CVWidgetMS, {
 						wdgt.size.do({ |i|
-							[key, count, i].postln;
+							// [key, count, i].postln;
 							if (incomingCmds[count].notNil and:{
 								wdgt.midiOscEnv[i].oscResponder.isNil
 							}) {
+								"CVWidgetMS: '%', incomingCmds[%]: %, msgIndex: %, wdgt.class: %\n".postf(
+									key, count, incomingCmds[count], msgIndex, wdgt.class
+								);
+
 								wdgt.oscConnect(
 									incomingCmds[count][0].ip,
 									incomingCmds[count][0].port,
