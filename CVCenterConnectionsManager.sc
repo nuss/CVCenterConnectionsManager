@@ -6,10 +6,10 @@ CVCenterConnectionsManager {
 
 	// TODO: netAddress should be passed in as second arg
 	*new { |name, includeWidgets, excludeWidgets|
-		^super.newCopyArgs(name).init(name, includeWidgets, excludeWidgets)
+		^super.newCopyArgs(name).init(includeWidgets, excludeWidgets)
 	}
 
-	init { |name, includeWidgets, excludeWidgets|
+	init { |includeWidgets, excludeWidgets|
 		name ?? {
 			Error("Please provide a name for the CVCenterConnectionsManager.").throw;
 		};
@@ -59,40 +59,44 @@ CVCenterConnectionsManager {
 	collectAddresses { |netAddress ...cmdPatterns|
 		var addrCmd, cmdsInUse = CVCenter.getCmdNamesAndAddressesInUse;
 		var cmds = cmdsInUse.collect { |it| it[1] };
+		var matchFunc = { |addrCmd|
+			case
+			{ netAddress.isNil } {
+				if (cmds.indexOfEqual(addrCmd[1]).isNil) {
+					incomingCmds = incomingCmds.add(addrCmd);
+				}
+			}
+			{ netAddress.notNil and:{ netAddress.port.isNil }} {
+				if (addrCmd[0].ip == netAddress.ip and: {
+					cmdsInUse.detect { |it| it[0].ip == addrCmd[0].ip and: { it[1] == addrCmd[1] }}.isNil
+				}) {
+					incomingCmds = incomingCmds.add(addrCmd);
+				}
+			}
+			{ netAddress.notNil and: { netAddress.port.notNil }} {
+				if (addrCmd[0] == netAddress and: {
+					cmdsInUse.detect { |it| it[0] == addrCmd[0] and: { it[1] == addrCmd[1] }}.isNil
+				}) {
+					incomingCmds = incomingCmds.add(addrCmd);
+				}
+			}
 
-		cmdPatterns ?? {
-			Error("No command patterns given. Please provide at least one, e.g '/my/cmd'").throw;
 		};
 
 		receiveFunc = { |msg, time, replyAddr, recvPort|
 			if (msg[0] != '/status.reply') {
 				addrCmd = [replyAddr, msg[0], msg.size];
-				cmdPatterns.do({ |pattern|
-					if (pattern.matchRegexp(msg[0].asString) and:{
-						incomingCmds.includesEqual(addrCmd).not
-					}) {
-						case
-						{ netAddress.isNil } {
-							if (cmds.indexOfEqual(addrCmd[1]).isNil) {
-								incomingCmds = incomingCmds.add(addrCmd);
-							}
+				if (cmdPatterns.notEmpty) {
+					cmdPatterns.do({ |pattern|
+						if (pattern.matchRegexp(msg[0].asString) and:{
+							incomingCmds.includesEqual(addrCmd).not
+						}) {
+							matchFunc.value(addrCmd);
 						}
-						{ netAddress.notNil and:{ netAddress.port.isNil }} {
-							if (addrCmd[0].ip == netAddress.ip and: {
-								cmdsInUse.detect { |it| it[0].ip == addrCmd[0].ip and: { it[1] == addrCmd[1] }}.isNil
-							}) {
-								incomingCmds = incomingCmds.add(addrCmd);
-							}
-						}
-						{ netAddress.notNil and: { netAddress.port.notNil }} {
-							if (addrCmd[0] == netAddress and: {
-								cmdsInUse.detect { |it| it[0] == addrCmd[0] and: { it[1] == addrCmd[1] }}.isNil
-							}) {
-								incomingCmds = incomingCmds.add(addrCmd);
-							}
-						}
-					}
-				})
+					})
+				} {
+					matchFunc.value(addrCmd);
+				}
 			}
 		};
 
